@@ -4,6 +4,14 @@
 
 Concrete is a small adaptive test selector for Python/pytest projects.
 
+## ConcreteVideo: the AI-compute branch
+
+`ConcreteVideo/` applies the same rule directly inside PyTorch inference: wrap expensive modules, learn how input drift predicts output drift, reuse cached activations when the predicted consequence is below a tolerance, and deliberately audit some predicted-safe reuses so the model can discover when its validity map is wrong.
+
+The first toy video benchmark is already executable. It removed 19 of 40 wrapped block executions and measured about 1.70x CPU wall-clock speedup at roughly `1e-5` mean end-to-end output error. That is only a mechanism check; the real target is a local diffusion/video model where skipped blocks mean saved GPU-seconds.
+
+See [`ConcreteVideo/README.md`](ConcreteVideo/README.md).
+
 A normal test selector needs a dependency graph supplied by the build system or a static guess from file names. Concrete learns a receiver-relative graph from actual executions:
 
 ```text
@@ -164,7 +172,7 @@ A full suite is the boring attacker and the safety ceiling. Concrete only earns 
 
 ## Current boundaries
 
-Version 0.1 is intentionally narrow:
+Version 0.1.1 is intentionally narrow:
 
 - Python project files only;
 - pytest adapter only;
