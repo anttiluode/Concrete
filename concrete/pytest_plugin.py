@@ -11,6 +11,15 @@ import pytest
 
 _ROOT = Path(os.environ.get("CONCRETE_ROOT", os.getcwd())).resolve()
 _TRACE_PATH = Path(os.environ.get("CONCRETE_TRACE_PATH", ".concrete/trace.jsonl"))
+
+# Pytest's console-script launcher does not always put the current project root
+# on sys.path the same way `python -m pytest` does, especially on Windows.
+# Concrete traces a repository in place, so its root-level modules must remain
+# importable during collection exactly as they are in ordinary project usage.
+_ROOT_TEXT = str(_ROOT)
+if _ROOT_TEXT not in sys.path:
+    sys.path.insert(0, _ROOT_TEXT)
+
 _current_files: set[str] | None = None
 _current_nodeid: str | None = None
 _current_reports: list[object] = []
