@@ -25,10 +25,24 @@ def _pytest_command(command: list[str], plugin: bool) -> list[str]:
         return command
 
     base = Path(command[0]).name.lower()
-    if "pytest" in base:
-        return [command[0], "-p", "concrete.pytest_plugin", *command[1:]]
+
+    # A bare `pytest` command is a console-script launcher. On Windows in
+    # particular it can have different sys.path/import behaviour, or even
+    # belong to a different Python installation than the one running
+    # Concrete. Normalize it to this interpreter.
+    if "pytest" in base or base.startswith("py.test"):
+        return [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "concrete.pytest_plugin",
+            *command[1:],
+        ]
+
     if base.startswith("python") and len(command) >= 3 and command[1:3] == ["-m", "pytest"]:
         return [command[0], "-m", "pytest", "-p", "concrete.pytest_plugin", *command[3:]]
+
     raise SystemExit(
         "Concrete's learner currently instruments pytest. Use e.g. "
         "`concrete learn -- pytest -q` or `concrete learn -- python -m pytest -q`."
@@ -45,6 +59,14 @@ def _run_traced(command: list[str], db_path: Path) -> tuple[int, int]:
     env = os.environ.copy()
     env["CONCRETE_ROOT"] = str(root)
     env["CONCRETE_TRACE_PATH"] = str(trace_path)
+
+    # Preserve ordinary "run from the repository root" import semantics even
+    # for projects that import root-level modules directly from tests.
+    old_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        str(root) if not old_pythonpath else str(root) + os.pathsep + old_pythonpath
+    )
+
     cmd = _pytest_command(command, plugin=True)
     print("Concrete >", shlex.join(cmd))
     result = subprocess.run(cmd, env=env)
@@ -118,7 +140,19 @@ def _render_plan(plan: list[Selection], changed: list[str], suite_mean: float | 
 def cmd_learn(args: argparse.Namespace) -> int:
     command = _strip_separator(args.command)
     code, ingested = _run_traced(command, Path(args.state))
-    print(f"Concrete learned {ingested} test observation(s).")
+    if code == 0:
+        print(f"Concrete learned {ingested} test observation(s).")
+    elif ingested:
+        print(
+            f"Concrete: pytest exited with code {code}; retained {ingested} "
+            "observation(s) from tests that actually ran.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"Concrete: pytest exited with code {code} before any tests ran; learned nothing.",
+            file=sys.stderr,
+        )
     return code
 
 
@@ -180,7 +214,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     nodeids = [s.nodeid for s in plan]
     command = [sys.executable, "-m", "pytest", *nodeids, *extra]
     code, ingested = _run_traced(command, Path(args.state))
-    print(f"Concrete refreshed {ingested} selected-test observation(s).")
+    if code == 0:
+        print(f"Concrete refreshed {ingested} selected-test observation(s).")
+    else:
+        print(
+            f"Concrete recorded {ingested} selected-test observation(s); "
+            f"pytest exited with code {code}.",
+            file=sys.stderr,
+        )
     return code
 
 
